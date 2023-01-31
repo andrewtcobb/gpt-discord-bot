@@ -59,7 +59,7 @@ async def on_ready():
 @discord.app_commands.checks.bot_has_permissions(send_messages=True)
 @discord.app_commands.checks.bot_has_permissions(view_channel=True)
 @discord.app_commands.checks.bot_has_permissions(manage_threads=True)
-async def chat_command(int: discord.Interaction, message: str):
+async def goodbye(int: discord.Interaction):
     try:
         # only support creating thread in text channel
         if not isinstance(int.channel, discord.TextChannel):
@@ -70,45 +70,16 @@ async def chat_command(int: discord.Interaction, message: str):
             return
 
         user = int.user
-        logger.info(f"Chat command by {user} {message[:20]}")
+        logger.info(f"Goodbye command by {user}")
         try:
-            # moderate the message
-            flagged_str, blocked_str = moderate_message(message=message, user=user)
-            await send_moderation_blocked_message(
-                guild=int.guild,
-                user=user,
-                blocked_str=blocked_str,
-                message=message,
-            )
-            if len(blocked_str) > 0:
-                # message was blocked
-                await int.response.send_message(
-                    f"Your prompt has been blocked by moderation.\n{message}",
-                    ephemeral=True,
-                )
-                return
-
             embed = discord.Embed(
                 description=f"<@{user.id}> wants a farewell message! 🤖💬",
                 color=discord.Color.green(),
             )
-            embed.add_field(name=user.name, value=message)
-
-            if len(flagged_str) > 0:
-                # message was flagged
-                embed.color = discord.Color.yellow()
-                embed.title = "⚠️ This prompt was flagged by moderation."
+            embed.add_field(name=user.name, value="Goodbye")
 
             await int.response.send_message(embed=embed)
             response = await int.original_response()
-
-            await send_moderation_flagged_message(
-                guild=int.guild,
-                user=user,
-                flagged_str=flagged_str,
-                message=message,
-                url=response.jump_url,
-            )
         except Exception as e:
             logger.exception(e)
             await int.response.send_message(
@@ -118,7 +89,7 @@ async def chat_command(int: discord.Interaction, message: str):
 
         # create the thread
         thread = await response.create_thread(
-            name=f"{ACTIVATE_THREAD_PREFX} {user.name[:20]} - {message[:30]}",
+            name=f"{ACTIVATE_THREAD_PREFX} {user.name[:20]} - goodbye",
             slowmode_delay=1,
             reason="gpt-bot",
             auto_archive_duration=60,
