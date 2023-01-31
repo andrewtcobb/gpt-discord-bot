@@ -52,6 +52,92 @@ async def on_ready():
         completion.MY_BOT_EXAMPLE_CONVOS.append(Conversation(messages=messages))
     await tree.sync()
 
+# /chat message:
+@tree.command(name="goodbye", description="Generate a job departure message")
+@discord.app_commands.checks.has_permissions(send_messages=True)
+@discord.app_commands.checks.has_permissions(view_channel=True)
+@discord.app_commands.checks.bot_has_permissions(send_messages=True)
+@discord.app_commands.checks.bot_has_permissions(view_channel=True)
+@discord.app_commands.checks.bot_has_permissions(manage_threads=True)
+async def chat_command(int: discord.Interaction, message: str):
+    try:
+        # only support creating thread in text channel
+        if not isinstance(int.channel, discord.TextChannel):
+            return
+
+        # block servers not in allow list
+        if should_block(guild=int.guild):
+            return
+
+        user = int.user
+        logger.info(f"Chat command by {user} {message[:20]}")
+        try:
+            # moderate the message
+            flagged_str, blocked_str = moderate_message(message=message, user=user)
+            await send_moderation_blocked_message(
+                guild=int.guild,
+                user=user,
+                blocked_str=blocked_str,
+                message=message,
+            )
+            if len(blocked_str) > 0:
+                # message was blocked
+                await int.response.send_message(
+                    f"Your prompt has been blocked by moderation.\n{message}",
+                    ephemeral=True,
+                )
+                return
+
+            embed = discord.Embed(
+                description=f"<@{user.id}> wants a farewell message! 🤖💬",
+                color=discord.Color.green(),
+            )
+            embed.add_field(name=user.name, value=message)
+
+            if len(flagged_str) > 0:
+                # message was flagged
+                embed.color = discord.Color.yellow()
+                embed.title = "⚠️ This prompt was flagged by moderation."
+
+            await int.response.send_message(embed=embed)
+            response = await int.original_response()
+
+            await send_moderation_flagged_message(
+                guild=int.guild,
+                user=user,
+                flagged_str=flagged_str,
+                message=message,
+                url=response.jump_url,
+            )
+        except Exception as e:
+            logger.exception(e)
+            await int.response.send_message(
+                f"Failed to start chat {str(e)}", ephemeral=True
+            )
+            return
+
+        # create the thread
+        thread = await response.create_thread(
+            name=f"{ACTIVATE_THREAD_PREFX} {user.name[:20]} - {message[:30]}",
+            slowmode_delay=1,
+            reason="gpt-bot",
+            auto_archive_duration=60,
+        )
+        async with thread.typing():
+            # fetch completion
+            messages = [Message(user=user.name, text="Generate a job departure message for a software engineer")]
+            response_data = await generate_completion_response(
+                messages=messages, user=user
+            )
+            # send the result
+            await process_response(
+                user=user, thread=thread, response_data=response_data
+            )
+    except Exception as e:
+        logger.exception(e)
+        await int.response.send_message(
+            f"Failed to start chat {str(e)}", ephemeral=True
+        )
 
 # /chat message:
 @tree.command(name="chat", description="Create a new thread for conversation")
